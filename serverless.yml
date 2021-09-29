@@ -1,0 +1,105 @@
+service: mySns
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: '20201221'
+  stage: ${opt:stage,'dev'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    DYNAMODB_TABLE: ${self:service}-${sls:stage}-MailgunDataTable
+    mySnsTopic: ${self:service}-${self:provider.stage}-Notify-MailgunEvent
+    mySnsTopicArn: ${self:custom.mySnsTopicArn.${self:provider.stage}}
+  httpApi:
+    cors: true
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - "sns:*"
+          Resource: "*"
+          #Resource: "arn:aws:dynamodb:${aws:region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+plugins:
+  - serverless-plugin-typescript
+  - serverless-dynamodb-local
+  - serverless-offline-sns
+  - serverless-offline
+functions:
+  save:
+    handler: mailgun/mailgun.saveMailgun
+    events:
+      - httpApi:
+          path: /mailgun-hook/save
+          method: post
+
+  list:
+    handler: mailgun/mailgun.getMailgun
+    events:
+      - httpApi:
+          path: /mailgun-hook/list
+          method: get
+
+  snsPublish:
+    handler: sns/sns.publishSNS
+    events:
+      - http:
+          path: snsPublish
+          method: post
+          cors: true
+        environment:
+          mySnsTopicArn: ${self:custom.mySnsTopicArn.${self:provider.stage}}
+
+  snsConsume:
+    handler: sns/snsConsume.handler
+    events:
+      - sns: ${self:custom.mySnsTopic}
+
+resources:
+  Resources:
+    MailgunDataDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+
+custom:
+  serverless-offline-sns:
+    port: 4002 # a free port for the sns server to run on
+    debug: false
+  mySnsTopic: "${self:service}-${self:provider.stage}-Notify-MailgunEvent"
+  mySnsTopicArn:
+    local:
+      "arn:aws:sns:us-east-1:123456789012:${self:custom.mySnsTopic}"
+    dev:
+      { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.mySnsTopic}" ] ]  }
+    prod:
+     { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.mySnsTopic}" ] ]  }
+
+  dynamodb:
+    stages:
+      - dev
+    start:
+      port: 8000
+    #  inMemory: true
+      migrate: true
+    # Comment if you don't have a DynamoDB running locally
+    #  noStart: true
+    migration:
+      dir: offline/migrations
