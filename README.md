@@ -1,7 +1,7 @@
 # Prerequisite for offline
 
 You must have JDK installed on your machine in order to run dynamoDB locally. 
-** [Link:] (https://www.oracle.com/java/technologies/downloads/)
+** [Link:]** (https://www.oracle.com/java/technologies/downloads/)
 
 You should be having serverless globally installed on your machine.
 
